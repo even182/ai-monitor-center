@@ -348,6 +348,12 @@ OIL_CHART_LIST = {
     "西德州原油 WTI": "CL=F",
 }
 
+CRYPTO_LIST = {
+    "BTC Bitcoin": "BTC-USD",
+    "ETH Ethereum": "ETH-USD",
+    "SOL Solana": "SOL-USD",
+}
+
 PERIOD_OPTIONS = {
     "1個月": "1mo",
     "3個月": "3mo",
@@ -1532,6 +1538,112 @@ def show_vix_card(period="1d", selected_label="1天"):
 
 
 
+def draw_crypto_chart(hist, positive=True):
+
+    if hist is None or hist.empty:
+        return None
+
+    color = tw_color_positive(positive)
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=hist.index,
+        y=hist["Close"],
+        mode="lines",
+        line=dict(color=color, width=2),
+        fill="tozeroy",
+        fillcolor=(
+            "rgba(220,0,0,0.10)"
+            if positive
+            else "rgba(0,150,120,0.12)"
+        ),
+        showlegend=False
+    ))
+
+    close_min = hist["Close"].min()
+    close_max = hist["Close"].max()
+    padding = (close_max - close_min) * 0.25
+
+    if padding == 0:
+        padding = close_max * 0.01
+
+    fig.update_layout(
+        height=250,
+        margin=dict(l=10, r=10, t=20, b=10),
+        yaxis=dict(
+            range=[close_min - padding, close_max + padding],
+            tickfont=dict(size=10),
+            gridcolor="rgba(180,180,180,0.25)"
+        ),
+        xaxis=dict(
+            title="",
+            tickfont=dict(size=10),
+            gridcolor="rgba(180,180,180,0.25)"
+        ),
+        font=dict(size=11),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)"
+    )
+
+    return fig
+
+
+def show_crypto_card(name, symbol):
+
+    hist = get_currency_history(symbol, period="12mo")
+
+    with st.container(border=True):
+
+        tooltip_map = {
+            "BTC Bitcoin": "Bitcoin 為加密貨幣市場代表性資產，可觀察市場風險偏好、美元流動性與投機情緒。",
+            "ETH Ethereum": "Ethereum 為主要智能合約平台代幣，可觀察加密貨幣生態系與風險資產情緒。",
+            "SOL Solana": "Solana 為高波動成長型公鏈代幣，可作為加密市場風險偏好的輔助觀察。"
+        }
+
+        st.markdown(
+            section_title_html(
+                f"₿ {name}",
+                tooltip_map.get(name, ""),
+                font_size=16
+            ),
+            unsafe_allow_html=True
+        )
+
+        if hist is None:
+            st.warning(f"{name} 資料讀取失敗")
+            return
+
+        last = hist["Close"].iloc[-1]
+        prev = hist["Close"].iloc[-2]
+
+        change = last - prev
+        change_pct = change / prev * 100
+
+        positive = change >= 0
+
+        st.metric(
+            label="",
+            value=f"${last:,.0f}",
+            delta=f"{change_pct:+.2f}%",
+            delta_color="inverse"
+        )
+
+        st.caption(
+            f"開盤 {hist['Open'].iloc[-1]:,.0f}　最高 {hist['High'].iloc[-1]:,.0f}　最低 {hist['Low'].iloc[-1]:,.0f}　資料日 {format_date(hist.index[-1])}"
+        )
+
+        fig = draw_crypto_chart(hist, positive)
+
+        if fig is not None:
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                config={"displayModeBar": False}
+            )
+
+
+
 def info_icon_html(tooltip):
     safe_tooltip = (
         tooltip
@@ -1970,4 +2082,43 @@ with oil_col2:
 with oil_col3:
 
     show_oil_spread_card()
+
+
+# =========================
+# Crypto Market
+# =========================
+
+st.divider()
+
+st.markdown(
+    section_title_html(
+        "₿ 加密貨幣",
+        "觀察 BTC、ETH、SOL 近一年走勢，可作為風險偏好、美元流動性與投機情緒的輔助指標。",
+        font_size=20
+    ),
+    unsafe_allow_html=True
+)
+
+crypto_col1, crypto_col2, crypto_col3 = st.columns(3)
+
+with crypto_col1:
+
+    show_crypto_card(
+        "BTC Bitcoin",
+        "BTC-USD"
+    )
+
+with crypto_col2:
+
+    show_crypto_card(
+        "ETH Ethereum",
+        "ETH-USD"
+    )
+
+with crypto_col3:
+
+    show_crypto_card(
+        "SOL Solana",
+        "SOL-USD"
+    )
 
