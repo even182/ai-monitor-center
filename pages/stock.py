@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-stock_valuation_dashboard_v12_1.py
+stock.py
 
-個股估值監控儀表板 v12.1
+個股估值監控儀表板 stock.py
 
 本版升級：
 1. 歷史 PE 不再用「目前 TTM EPS」固定回推
@@ -16,7 +16,7 @@ stock_valuation_dashboard_v12_1.py
 
 執行：
     pip install streamlit pandas numpy plotly yfinance
-    streamlit run stock_valuation_dashboard_v12_1.py
+    streamlit run stock.py
 """
 
 from __future__ import annotations
@@ -717,6 +717,11 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
     st.divider()
 
 
+
+# =========================
+# Main
+# =========================
+
 st.markdown("""
 <div style="padding-top:8px;padding-bottom:2px;">
 <h1 style="margin-bottom:0px;padding-bottom:0px;line-height:1.25;">
@@ -725,40 +730,101 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-st.caption("v12：使用歷史季度 EPS 計算近 3 年 PE；Forward 模式使用目前 PE × Forward EPS 推算預期股價。")
+st.caption("Stock Valuation｜EPS × PE 合理股價監控")
 
-render_stock_block(
-    block_title="區塊一：固定監控 2330 台積電",
-    symbol="2330",
-    key_prefix="tsmc",
+page_mode = st.radio(
+    "選擇監控頁面",
+    [
+        "市值排行前五",
+        "股價排行前五",
+        "自選股監測",
+    ],
+    horizontal=True,
+    key="stock_page_mode",
 )
 
-st.markdown("## 區塊二：輸入股票代碼查詢")
+MARKET_CAP_TOP5 = [
+    ("2330", "台積電"),
+    ("2308", "台達電"),
+    ("2454", "聯發科"),
+    ("2317", "鴻海"),
+    ("3711", "日月光投控"),
+]
 
-input_col, spacer = st.columns([0.25, 0.75])
-with input_col:
-    custom_symbol = st.text_input(
-        "股票代碼",
-        value="2317",
-        help="台股可輸入 2330、2317、2454，系統會自動補 .TW",
+PRICE_TOP5 = [
+    ("5274.TWO", "信驊"),
+    ("6515", "穎崴"),
+    ("7769", "緯穎"),
+    ("6223.TWO", "旺矽"),
+    ("6669", "緯穎"),
+]
+
+
+def render_rank_page(title: str, stock_list: list[tuple[str, str]], key_prefix: str):
+    st.markdown(f"## {title}")
+    st.caption("點開個股區塊即可查看 EPS / PE 估值、Forward 推估股價與近 3 年 PE / 股價走勢。")
+
+    for i, (symbol, name) in enumerate(stock_list, start=1):
+        display_symbol = symbol.replace(".TWO", "").replace(".TW", "")
+        with st.expander(f"{i}. {display_symbol}｜{name}", expanded=(i == 1)):
+            render_stock_block(
+                block_title=f"{i}. {display_symbol}｜{name}",
+                symbol=symbol,
+                key_prefix=f"{key_prefix}_{symbol}",
+            )
+
+
+if page_mode == "市值排行前五":
+    render_rank_page(
+        title="市值排行前五",
+        stock_list=MARKET_CAP_TOP5,
+        key_prefix="market_cap",
     )
 
-if custom_symbol:
+elif page_mode == "股價排行前五":
+    render_rank_page(
+        title="股價排行前五",
+        stock_list=PRICE_TOP5,
+        key_prefix="price_rank",
+    )
+
+else:
+    st.markdown("## 自選股監測")
+
     render_stock_block(
-        block_title=f"查詢結果：{normalize_tw_symbol(custom_symbol)}",
-        symbol=custom_symbol,
-        key_prefix="custom",
+        block_title="固定監控 2330 台積電",
+        symbol="2330",
+        key_prefix="tsmc",
     )
+
+    st.markdown("## 輸入股票代碼查詢")
+
+    input_col, spacer = st.columns([0.25, 0.75])
+    with input_col:
+        custom_symbol = st.text_input(
+            "股票代碼",
+            value="2317",
+            help="台股可輸入 2330、2317、2454，系統會自動補 .TW",
+        )
+
+    if custom_symbol:
+        render_stock_block(
+            block_title=f"查詢結果：{normalize_tw_symbol(custom_symbol)}",
+            symbol=custom_symbol,
+            key_prefix="custom",
+        )
 
 with st.expander("使用提醒"):
     st.markdown(
         """
+- **市值排行前五**：2330、2308、2454、2317、3711。
+- **股價排行前五**：5274、6515、7796、6223、6669。
+- **自選股監測**：保留原本的 2330 固定監控與自訂股票查詢。
 - **TTM EPS 模式**：目前 PE = 目前股價 ÷ TTM EPS。
 - **Forward EPS 模式**：預估股價 = 目前 PE × Forward EPS。
 - **歷史 PE**：優先用歷史季度 EPS 建立 TTM EPS，再計算每日 PE。
 - 若 yfinance 抓不到歷史 EPS，會退回「目前 TTM EPS 近似回推」。
 - 合理 PE 預設使用近 3 年 PE 平均值。
-- 下方圖表：PE 為藍色左軸，股價為橘色右軸。
 - 本工具是估值輔助，不是買賣建議。
 """
     )
