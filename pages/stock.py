@@ -953,7 +953,7 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
 st.markdown("""
 <div style="padding-top:8px;padding-bottom:2px;">
 <h1 style="margin-bottom:0px;padding-bottom:0px;line-height:1.25;">
-📈 個股估值監控儀表板
+📈 台股估值監控儀表板
 </h1>
 </div>
 """, unsafe_allow_html=True)
