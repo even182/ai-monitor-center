@@ -305,7 +305,7 @@ hr {
 # =========================
 
 st_autorefresh(
-    interval=60 * 1000,
+    interval=60 * 60 * 1000,
     key="global_market_refresh"
 )
 
@@ -368,16 +368,24 @@ VIX_PERIOD_OPTIONS = {
     "3月": "3mo",
 }
 
+GLOBAL_INDEX_PERIOD_OPTIONS = {
+    "1天": "1d",
+    "1月": "1mo",
+    "1年": "1y",
+    "3年": "3y",
+}
+
 
 # =========================
 # Data Functions
 # =========================
 
-@st.cache_data(ttl=60)
-def get_market_data(symbol):
+@st.cache_data(ttl=3600)
+def get_market_data(symbol, chart_period="1d"):
 
     ticker = yf.Ticker(symbol)
 
+    # 每日漲跌仍以最近兩個交易日收盤價計算，避免切換長週期時影響主數字。
     daily = ticker.history(
         period="10d",
         interval="1d"
@@ -397,15 +405,22 @@ def get_market_data(symbol):
     change = last_close - prev_close
     change_pct = change / prev_close * 100
 
-    intraday = ticker.history(
-        period="5d",
-        interval="5m"
-    )
-
-    if intraday.empty:
-        hist = daily.reset_index()
+    # 線圖期間：1天使用 5 分 K；其餘使用日 K，降低資料量並讓長週期更平滑。
+    if chart_period == "1d":
+        hist = ticker.history(
+            period="1d",
+            interval="5m"
+        )
     else:
-        hist = intraday.reset_index()
+        hist = ticker.history(
+            period=chart_period,
+            interval="1d"
+        )
+
+    if hist.empty:
+        hist = daily
+
+    hist = hist.reset_index()
 
     if "Datetime" in hist.columns:
         last_time = hist.iloc[-1]["Datetime"]
@@ -424,7 +439,7 @@ def get_market_data(symbol):
     }
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def get_bond_history(symbol="^TNX", period="6mo"):
 
     ticker = yf.Ticker(symbol)
@@ -455,7 +470,7 @@ def get_bond_history(symbol="^TNX", period="6mo"):
     }
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def get_currency_history(symbol, period="12mo"):
 
     ticker = yf.Ticker(symbol)
@@ -471,7 +486,7 @@ def get_currency_history(symbol, period="12mo"):
     return hist
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def get_oil_spread_data():
 
     brent = yf.Ticker("BZ=F").history(
@@ -590,7 +605,7 @@ def build_fear_greed_result(score, rating, history_rows, source):
     }
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)
 def get_fear_greed_data():
 
     # 先抓 CNN 官方 API。
@@ -767,7 +782,7 @@ def get_fear_greed_data():
     return None
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=3600)
 def get_vix_data(period="1d"):
 
     # 使用 Yahoo Finance chart API，和 Yahoo 報價頁來源一致。
@@ -1831,10 +1846,36 @@ st.divider()
 # Global Index
 # =========================
 
+global_index_title_col, global_index_period_col = st.columns([3, 2])
+
+with global_index_title_col:
+
+    st.markdown(
+        section_title_html(
+            "全球股市指數",
+            "觀察全球主要股市漲跌與短線趨勢，可作為台股、台指期與風險情緒的參考指標",
+            font_size=20
+        ),
+        unsafe_allow_html=True
+    )
+
+with global_index_period_col:
+
+    selected_global_index_label = st.radio(
+        "全球股市指數期間",
+        list(GLOBAL_INDEX_PERIOD_OPTIONS.keys()),
+        index=0,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="global_index_period_selector"
+    )
+
+global_index_period = GLOBAL_INDEX_PERIOD_OPTIONS[selected_global_index_label]
+
 results = {}
 
 for name, symbol in WATCHLIST.items():
-    results[name] = get_market_data(symbol)
+    results[name] = get_market_data(symbol, chart_period=global_index_period)
 
 valid_results = {
     k: v for k, v in results.items()
@@ -1856,15 +1897,6 @@ c1, c2, c3 = st.columns(3)
 c1.metric("上漲市場", up_count)
 c2.metric("下跌市場", down_count)
 c3.metric("監控指數", len(valid_results))
-
-st.markdown(
-    section_title_html(
-        "全球股市指數",
-        "觀察全球主要股市漲跌與短線趨勢，可作為台股、台指期與風險情緒的參考指標",
-        font_size=20
-    ),
-    unsafe_allow_html=True
-)
 
 cards = list(WATCHLIST.items())
 
