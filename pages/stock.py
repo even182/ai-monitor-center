@@ -2,7 +2,7 @@
 """
 stock.py
 
-個股估值監控儀表板 stock.py
+台股估值監控儀表板 stock.py
 
 本版升級：
 1. 歷史 PE 不再用「目前 TTM EPS」固定回推
@@ -23,6 +23,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, Optional, Tuple
+from pathlib import Path
+import json
+import urllib.request
 
 import numpy as np
 import pandas as pd
@@ -36,7 +39,7 @@ except Exception:
 
 
 st.set_page_config(
-    page_title="個股估值監控儀表板",
+    page_title="台股估值監控儀表板",
     page_icon="📈",
     layout="wide",
 )
@@ -116,6 +119,207 @@ h3 {
 """,
     unsafe_allow_html=True,
 )
+
+
+
+TW_STOCK_NAMES = {
+    "2330": "台積電",
+    "2308": "台達電",
+    "2454": "聯發科",
+    "2317": "鴻海",
+    "3711": "日月光投控",
+    "5274": "信驊",
+    "6515": "穎崴",
+    "7769": "鴻勁",
+    "6223": "旺矽",
+    "6669": "緯穎",
+    "2412": "中華電信",
+    "2327": "國巨",
+}
+
+
+def normalize_stock_code_for_lookup(value) -> str:
+    """
+    將 Excel / 手動輸入的股票代碼標準化。
+    例如：
+    2327.0 -> 2327
+    50 -> 0050
+    2327.TW -> 2327
+    5274.TWO -> 5274
+    """
+    if value is None:
+        return ""
+
+    code = str(value).strip().upper()
+    code = code.replace(".TW", "").replace(".TWO", "")
+
+    if code.endswith(".0"):
+        code = code[:-2]
+
+    # 移除常見空白與不可見字元
+    code = code.replace("\u3000", "").replace(" ", "")
+
+    if code.isdigit() and len(code) < 4:
+        code = code.zfill(4)
+
+    return code
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def load_stock_name_map() -> Dict[str, str]:
+    """
+    從 data/stock_name.xlsx 載入股票中文名稱。
+    支援常見欄位：
+    - 股票代號 / 證券代號 / 代號 / code / stock_code
+    - 股票名稱 / 證券名稱 / 名稱 / name / stock_name
+
+    若找不到欄位，預設使用前兩欄作為代號與名稱。
+    """
+    possible_paths = [
+        Path.cwd() / "data" / "stock_name.xlsx",
+        Path(__file__).resolve().parent.parent / "data" / "stock_name.xlsx",
+        Path(__file__).resolve().parent / "data" / "stock_name.xlsx",
+    ]
+
+    file_path = None
+    for p in possible_paths:
+        if p.exists():
+            file_path = p
+            break
+
+    if file_path is None:
+        return {}
+
+    try:
+        df = pd.read_excel(file_path, dtype=str)
+    except Exception:
+        return {}
+
+    if df is None or df.empty:
+        return {}
+
+    df.columns = [str(c).strip() for c in df.columns]
+
+    code_candidates = [
+        "股票代號", "證券代號", "代號", "股票代碼", "代碼",
+        "code", "Code", "stock_code", "StockCode", "stock_id", "StockID",
+    ]
+
+    name_candidates = [
+        "股票名稱", "證券名稱", "名稱", "公司名稱", "簡稱",
+        "name", "Name", "stock_name", "StockName", "CompanyName",
+    ]
+
+    code_col = next((c for c in code_candidates if c in df.columns), None)
+    name_col = next((c for c in name_candidates if c in df.columns), None)
+
+    # 若欄位名稱不符合，預設前兩欄
+    if code_col is None or name_col is None:
+        if len(df.columns) >= 2:
+            code_col = df.columns[0]
+            name_col = df.columns[1]
+        else:
+            return {}
+
+    result = {}
+
+    for _, row in df.iterrows():
+        code = normalize_stock_code_for_lookup(row.get(code_col))
+        name = str(row.get(name_col, "")).strip()
+
+        if not code or not name or name.lower() == "nan":
+            continue
+
+        result[code] = name
+
+    return result
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_tw_stock_name(stock_code: str) -> str:
+    """
+    嘗試從台股公開資料抓中文股名。
+    若失敗則回傳空字串，讓畫面使用 Yahoo 英文名。
+    """
+    code = normalize_stock_code_for_lookup(stock_code)
+
+    # 1. 先查內建常用股票名稱
+    if code in TW_STOCK_NAMES:
+        return TW_STOCK_NAMES[code]
+
+    # 2. 再查 data/stock_name.xlsx
+    stock_name_map = load_stock_name_map()
+    if code in stock_name_map:
+        return stock_name_map[code]
+
+    # 3. 最後才嘗試線上公開資料
+    urls = [
+        "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL",
+        "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_quotes",
+    ]
+
+    for url in urls:
+        try:
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0",
+                    "Accept": "application/json,text/plain,*/*",
+                },
+            )
+
+            with urllib.request.urlopen(req, timeout=8) as response:
+                raw = response.read().decode("utf-8", errors="ignore")
+
+            rows = json.loads(raw)
+
+            if not isinstance(rows, list):
+                continue
+
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+
+                values = {str(k): str(v).strip() for k, v in row.items()}
+
+                # 找代碼欄位
+                matched = False
+                for key, value in values.items():
+                    if value == code:
+                        matched = True
+                        break
+
+                if not matched:
+                    continue
+
+                # 優先找常見名稱欄位
+                for name_key in [
+                    "Name",
+                    "CompanyName",
+                    "CompanyAbbreviation",
+                    "SecuritiesCompanyName",
+                    "SecuritiesCompanyAbbreviation",
+                    "證券名稱",
+                    "公司名稱",
+                    "有價證券名稱",
+                ]:
+                    if name_key in values and values[name_key] and values[name_key] != code:
+                        return values[name_key]
+
+                # 模糊找名稱欄位
+                for key, value in values.items():
+                    key_lower = key.lower()
+                    if (
+                        ("name" in key_lower or "名稱" in key or "公司" in key)
+                        and value
+                        and value != code
+                    ):
+                        return value
+
+        except Exception:
+            continue
+
+    return ""
 
 
 def normalize_tw_symbol(symbol: str) -> str:
@@ -491,41 +695,53 @@ def draw_value_gauge(
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def draw_pe_price_chart(stock: Dict, symbol: str):
+def draw_pe_price_chart(stock: Dict, symbol: str, fair_price: Optional[float] = None):
     df = stock["hist_3y"]
 
-    if df is None or df.empty or "PE" not in df.columns:
-        st.info("目前無法產生近 3 年本益比與股價圖。")
+    if df is None or df.empty or "Close" not in df.columns:
+        st.info("目前無法產生近 3 年股價圖。")
         return
 
     fig = go.Figure()
 
-    # 先畫股價，再畫 PE，避免股價線蓋住 PE 線
     fig.add_trace(
         go.Scatter(
             x=df.index,
             y=df["Close"],
-            name="股價 TWD（右軸）",
+            name="股價 TWD",
             mode="lines",
-            yaxis="y2",
-            line=dict(color="#FF7A00", width=2.2),
-            opacity=0.72,
+            line=dict(color="#FF7A00", width=2.6),
         )
     )
 
-    fig.add_trace(
-        go.Scatter(
-            x=df.index,
-            y=df["PE"],
-            name="本益比 PE（左軸）",
-            mode="lines",
-            yaxis="y1",
-            line=dict(color="#0057D9", width=3.0),
+    if fair_price is not None and fair_price > 0:
+        fig.add_hline(
+            y=fair_price,
+            line_color="green",
+            line_width=2,
+            line_dash="dash",
+            annotation_text=f"合理價 {fair_price:,.2f}",
+            annotation_position="top left",
+            annotation_font_color="green",
+            annotation_bgcolor="rgba(255,255,255,0.85)",
         )
-    )
+
+    optimistic_price = stock.get("optimistic_price")
+
+    if optimistic_price is not None and optimistic_price > 0:
+        fig.add_hline(
+            y=optimistic_price,
+            line_color="red",
+            line_width=2,
+            line_dash="dot",
+            annotation_text=f"樂觀價 {optimistic_price:,.2f}",
+            annotation_position="top left",
+            annotation_font_color="red",
+            annotation_bgcolor="rgba(255,255,255,0.85)",
+        )
 
     fig.update_layout(
-        title=f"{symbol} 近 3 年本益比（PE）與股價走勢",
+        title=f"{symbol} 近 3 年股價走勢",
         height=370,
         margin=dict(l=25, r=25, t=55, b=25),
         legend=dict(
@@ -536,16 +752,9 @@ def draw_pe_price_chart(stock: Dict, symbol: str):
             x=0.5,
         ),
         yaxis=dict(
-            title=dict(text="本益比 PE", font=dict(color="#0057D9")),
+            title=dict(text="股價 TWD", font=dict(color="#FF7A00")),
             side="left",
             showgrid=True,
-            tickfont=dict(color="#0057D9"),
-        ),
-        yaxis2=dict(
-            title=dict(text="股價 TWD", font=dict(color="#FF7A00")),
-            side="right",
-            overlaying="y",
-            showgrid=False,
             tickfont=dict(color="#FF7A00"),
         ),
         xaxis=dict(title=""),
@@ -575,8 +784,16 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
     left, right = st.columns([1.05, 1.15], gap="large")
 
     with left:
+        display_symbol = symbol.replace(".TW", "").replace(".TWO", "")
+        tw_name = fetch_tw_stock_name(display_symbol)
+
+        if tw_name:
+            title_text = f"{display_symbol}｜{tw_name}｜{stock['name']}"
+        else:
+            title_text = f"{display_symbol}｜{stock['name']}"
+
         st.markdown(
-            f"<div class='stock-title'>{symbol}｜{stock['name']}</div>",
+            f"<div class='stock-title'>{title_text}</div>",
             unsafe_allow_html=True,
         )
 
@@ -678,7 +895,17 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
         v1.metric("保守價", f"{valuation['conservative']:,.2f}")
         v2.metric("合理價", f"{valuation['fair']:,.2f}")
         v3.metric("樂觀價", f"{valuation['optimistic']:,.2f}")
-        v4.metric("距合理價", f"{valuation['discount']:,.2f}%")
+
+        discount_color = "red" if valuation["discount"] < 0 else "green"
+        v4.markdown(
+            f"""
+            <div style="font-size:0.82rem;color:#334155;margin-bottom:2px;">距合理價</div>
+            <div style="font-size:1.50rem;font-weight:600;color:{discount_color};line-height:1.25;">
+                {valuation['discount']:,.2f}%
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         if mode == "Forward":
             st.metric(
@@ -707,10 +934,11 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
             current_pe=current_pe,
         )
 
-    draw_pe_price_chart(stock, symbol)
+    stock["optimistic_price"] = valuation["optimistic"]
+    draw_pe_price_chart(stock, symbol, valuation["fair"])
 
     st.markdown(
-        "<div class='small-note'>說明：目前 PE = 目前股價 ÷ TTM EPS；Forward 推估股價 = 目前 PE × Forward EPS。若抓不到歷史 EPS，PE 圖會退回目前 TTM EPS 近似回推。</div>",
+        "<div class='small-note'>說明：目前 PE = 目前股價 ÷ TTM EPS；Forward 推估股價 = 目前 PE × Forward EPS；下方紅色虛線為合理價。</div>",
         unsafe_allow_html=True,
     )
 
@@ -754,7 +982,7 @@ MARKET_CAP_TOP5 = [
 PRICE_TOP5 = [
     ("5274.TWO", "信驊"),
     ("6515", "穎崴"),
-    ("7769", "緯穎"),
+    ("7769", "鴻勁"),
     ("6223.TWO", "旺矽"),
     ("6669", "緯穎"),
 ]
@@ -762,11 +990,11 @@ PRICE_TOP5 = [
 
 def render_rank_page(title: str, stock_list: list[tuple[str, str]], key_prefix: str):
     st.markdown(f"## {title}")
-    st.caption("點開個股區塊即可查看 EPS / PE 估值、Forward 推估股價與近 3 年 PE / 股價走勢。")
+    st.caption("點開個股區塊即可查看 EPS / PE 估值、Forward 推估股價與近 3 年股價走勢。")
 
     for i, (symbol, name) in enumerate(stock_list, start=1):
         display_symbol = symbol.replace(".TWO", "").replace(".TW", "")
-        with st.expander(f"{i}. {display_symbol}｜{name}", expanded=(i == 1)):
+        with st.expander(f"{i}. {display_symbol}｜{name}", expanded=True):
             render_stock_block(
                 block_title=f"{i}. {display_symbol}｜{name}",
                 symbol=symbol,
@@ -791,20 +1019,12 @@ elif page_mode == "股價排行前五":
 else:
     st.markdown("## 自選股監測")
 
-    render_stock_block(
-        block_title="固定監控 2330 台積電",
-        symbol="2330",
-        key_prefix="tsmc",
-    )
-
-    st.markdown("## 輸入股票代碼查詢")
-
     input_col, spacer = st.columns([0.25, 0.75])
     with input_col:
         custom_symbol = st.text_input(
             "股票代碼",
-            value="2317",
-            help="台股可輸入 2330、2317、2454，系統會自動補 .TW",
+            value="2412",
+            help="台股可輸入 2330、2412、2454，系統會自動補 .TW",
         )
 
     if custom_symbol:
