@@ -115,6 +115,52 @@ h3 {
     font-weight: 700;
 }
 
+
+.name-info-icon {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+    border-radius: 50%;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: help;
+}
+
+.name-info-icon::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 8px);
+    transform: translateX(-50%);
+    min-width: 260px;
+    max-width: 360px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.96);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.5;
+    white-space: pre-line;
+    text-align: left;
+    box-shadow: 0 8px 20px rgba(15, 23, 42, 0.18);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+.name-info-icon:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
 </style>
 """,
     unsafe_allow_html=True,
@@ -135,6 +181,32 @@ TW_STOCK_NAMES = {
     "6669": "緯穎",
     "2412": "中華電信",
     "2327": "國巨",
+    "6510": "精測",
+    "6683": "雍智",
+    "3042": "晶技",
+    "3221": "台嘉碩",
+    "8182": "加高",
+    "8289": "泰藝",
+    "2484": "希華",
+    "6174": "安碁",
+    "6805": "富世達",
+    "3653": "健策",
+    "6285": "啟碁",
+    "2313": "華通",
+    "3105": "穩懋",
+    "8086": "宏捷科",
+    "2455": "全新",
+    "5388": "中磊",
+    "3596": "智易",
+    "3491": "昇達科",
+    "4979": "華星光",
+    "3081": "聯亞",
+    "3363": "上詮",
+    "3450": "聯鈞",
+    "3163": "波若威",
+    "6442": "光聖",
+    "3234": "光環",
+    "2345": "智邦",
 }
 
 
@@ -965,11 +1037,222 @@ page_mode = st.radio(
     [
         "市值排行前五",
         "股價排行前五",
+        "AI 測試四大天王",
+        "石英元件",
+        "液冷散熱",
+        "Starlink／低軌衛星",
+        "光通訊/矽光子",
         "自選股監測",
     ],
     horizontal=True,
     key="stock_page_mode",
 )
+
+CONCEPT_STOCKS = {
+    "AI 測試四大天王": [
+        (
+            "6510.TWO",
+            "精測",
+            """專門處理最難、最精密的 AI 晶片測試。
+越高階的晶片，他們越有機會賺。""",
+        ),
+        (
+            "6223.TWO",
+            "旺矽",
+            """做的是 AI 測試設備整合。
+簡單講就是：幫客戶把整套測試流程一次搞定。""",
+        ),
+        (
+            "6515",
+            "穎崴",
+            """主攻高速測試座。
+很多高階 AI 晶片最後測試都需要它，尤其跟 NVIDIA 題材連動很深。""",
+        ),
+        (
+            "6683.TWO",
+            "雍智",
+            """專做客製化 ASIC 測試。
+現在很多美國大廠都在自己做 AI 晶片，這類需求反而越來越多。""",
+        ),
+    ],
+    "石英元件": [
+        (
+            "3042",
+            "晶技",
+            """族群龍頭，切入AI與低軌衛星，屬於趨勢型公司""",
+        ),
+        (
+            "3221.TWO",
+            "台嘉碩",
+            """射頻元件延伸到AI通訊鏈，題材開始被市場認同""",
+        ),
+        (
+            "8182.TWO",
+            "加高",
+            """網通應用明確，近期走勢相對強勢""",
+        ),
+        (
+            "8289.TWO",
+            "泰藝",
+            """高精度產品切入高速傳輸，屬於技術含量較高的一塊""",
+        ),
+        (
+            "2484",
+            "希華",
+            """往上游長晶發展，強調成本控制與供應穩定""",
+        ),
+        (
+            "6174.TWO",
+            "安碁",
+            """工控與物聯網應用，搭配產業循環回溫""",
+        ),
+    ],
+    "液冷散熱": [
+        (
+            "2308",
+            "台達電",
+            """AI資料中心「電力＋液冷」雙核心。AI PSU 全球龍頭，切入 CDU、Sidecar、泵浦與整體熱管理，受惠 GB200/GB300 高功耗趨勢。
+核心產品: PSU / CDU / 泵浦""",
+        ),
+        (
+            "3017",
+            "奇鋐",
+            """液冷散熱主升段核心股。具水冷板、CDU、機櫃整合能力，深度綁定 NVIDIA 與 AI 伺服器供應鏈。
+核心產品: 水冷板 / CDU""",
+        ),
+        (
+            "3324.TWO",
+            "雙鴻",
+            """從傳統散熱升級液冷模組龍頭。強項為冷板、分歧管與高客製化散熱方案，AI 液冷營收快速成長。
+核心產品: 冷板 / 分歧管""",
+        ),
+        (
+            "6805",
+            "富世達",
+            """AI 液冷快接頭（QD）核心受惠股。高技術門檻與認證優勢，受惠 GB300 與高密度液冷滲透率提升。
+核心產品: 快接頭 QD""",
+        ),
+        (
+            "3653",
+            "健策",
+            """高階散熱與封裝技術代表。MCL 微通道與均熱片技術切入高功耗 GPU 散熱，具高毛利與高門檻優勢。
+核心產品: MCL / 均熱片""",
+        ),
+    ],
+    "Starlink／低軌衛星": [
+        (
+            "6285",
+            "啟碁",
+            """Starlink 地面終端與天線模組核心供應商。
+受惠低軌衛星、企業專網與衛星直連手機（Direct-to-Cell）長線趨勢。""",
+        ),
+        (
+            "2313",
+            "華通",
+            """Starlink／低軌衛星 PCB 核心受惠股。
+高頻高速板與衛星板技術門檻高，為台股 LEO 最具代表性的 PCB 廠。""",
+        ),
+        (
+            "3105.TWO",
+            "穩懋",
+            """GaAs 射頻晶圓龍頭。
+受惠低軌衛星 Ku／Ka 高頻通訊需求，長線連動 6G、衛星與 AI 通訊基建。""",
+        ),
+        (
+            "8086.TWO",
+            "宏捷科",
+            """RF 功率放大器（PA）受惠股。
+具高頻通訊與低軌衛星題材，受惠衛星射頻需求提升。""",
+        ),
+        (
+            "3042",
+            "晶技",
+            """高頻石英元件核心廠。
+低軌衛星、高速傳輸與 AI 網通皆需高精度頻率控制。""",
+        ),
+        (
+            "3221.TWO",
+            "台嘉碩",
+            """高頻石英與 RF 元件供應商。
+受惠衛星通訊、高速傳輸與高頻網通升級。""",
+        ),
+        (
+            "2455",
+            "全新",
+            """光通訊與 RF 高頻材料廠。
+受惠高速光通訊、衛星與 AI 網路升級趨勢。""",
+        ),
+        (
+            "5388",
+            "中磊",
+            """衛星地面設備與網通設備供應商。
+受惠偏遠地區寬頻與企業衛星網路建置。""",
+        ),
+        (
+            "3596",
+            "智易",
+            """衛星寬頻 CPE／Gateway 題材股。
+具網通設備與衛星地面終端成長潛力。""",
+        ),
+        (
+            "3491.TWO",
+            "昇達科",
+            """高頻微波與毫米波通訊廠。
+低軌衛星與軍工通訊題材強，波動性也較高。""",
+        ),
+    ],
+    "光通訊/矽光子": [
+        (
+            "4979.TWO",
+            "華星光",
+            """AI 光模組核心人氣股。受惠 800G／1.6T 高速傳輸升級，為 AI 資料中心光通訊主流受惠股。
+定位: 光模組核心""",
+        ),
+        (
+            "3081.TWO",
+            "聯亞",
+            """矽光子與 InP 磊晶核心廠。掌握高速雷射光源技術，受惠 CPO 與下一代 AI 光互連。
+定位: 矽光子核心""",
+        ),
+        (
+            "3363.TWO",
+            "上詮",
+            """MPO 光纖連接器龍頭。受惠 CPO、AI 高速交換器與光纖佈線升級。
+定位: CPO 核心""",
+        ),
+        (
+            "3450",
+            "聯鈞",
+            """高速光模組與雷射封裝廠。受惠 AI Data Center 高頻寬需求與光模組升級。
+定位: 高速光模組""",
+        ),
+        (
+            "3163.TWO",
+            "波若威",
+            """光纖被動元件與高速傳輸核心供應商。受惠 AI 資料中心光纖需求成長。
+定位: 光纖元件""",
+        ),
+        (
+            "6442",
+            "光聖",
+            """光纖連接與高速傳輸元件廠。受惠 AI 高速傳輸與雲端資料中心建置。
+定位: 高速傳輸元件""",
+        ),
+        (
+            "3234.TWO",
+            "光環",
+            """光通訊雷射元件廠。受惠高速光模組與 AI 光通訊升級趨勢。
+定位: 光纖高速連接""",
+        ),
+        (
+            "2345",
+            "智邦",
+            """AI 高速交換器龍頭。受惠 800G／1.6T 交換器升級與大型 AI 資料中心建置。
+定位: AI 高速交換器""",
+        ),
+    ]
+}
+
 
 MARKET_CAP_TOP5 = [
     ("2330", "台積電"),
@@ -988,15 +1271,52 @@ PRICE_TOP5 = [
 ]
 
 
-def render_rank_page(title: str, stock_list: list[tuple[str, str]], key_prefix: str):
+
+def html_escape(text: str) -> str:
+    return (
+        str(text)
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def stock_display_label(symbol: str, name: str, note: str = "") -> str:
+    display_symbol = symbol.replace(".TWO", "").replace(".TW", "")
+    if note:
+        tooltip = html_escape(note)
+        return (
+            f"{display_symbol}｜{name}"
+            f"<span class='name-info-icon' data-tooltip=\"{tooltip}\">i</span>"
+        )
+    return f"{display_symbol}｜{name}"
+
+
+def render_rank_page(title: str, stock_list: list, key_prefix: str):
     st.markdown(f"## {title}")
     st.caption("點開個股區塊即可查看 EPS / PE 估值、Forward 推估股價與近 3 年股價走勢。")
 
-    for i, (symbol, name) in enumerate(stock_list, start=1):
+    for i, item in enumerate(stock_list, start=1):
+        if len(item) >= 3:
+            symbol, name, note = item[0], item[1], item[2]
+        else:
+            symbol, name = item[0], item[1]
+            note = ""
+
         display_symbol = symbol.replace(".TWO", "").replace(".TW", "")
-        with st.expander(f"{i}. {display_symbol}｜{name}", expanded=True):
+        label_html = stock_display_label(symbol, name, note)
+        plain_title = f"{i}. {display_symbol}｜{name}"
+
+        with st.expander(plain_title, expanded=True):
+            if note:
+                st.markdown(
+                    f"<div style='font-size:1.05rem;font-weight:700;margin-bottom:0.6rem;'>{i}. {label_html}</div>",
+                    unsafe_allow_html=True,
+                )
+
             render_stock_block(
-                block_title=f"{i}. {display_symbol}｜{name}",
+                block_title=plain_title,
                 symbol=symbol,
                 key_prefix=f"{key_prefix}_{symbol}",
             )
@@ -1014,6 +1334,41 @@ elif page_mode == "股價排行前五":
         title="股價排行前五",
         stock_list=PRICE_TOP5,
         key_prefix="price_rank",
+    )
+
+elif page_mode == "AI 測試四大天王":
+    render_rank_page(
+        title="AI 測試四大天王",
+        stock_list=CONCEPT_STOCKS.get("AI 測試四大天王", []),
+        key_prefix="concept_ai_test",
+    )
+
+elif page_mode == "石英元件":
+    render_rank_page(
+        title="石英元件",
+        stock_list=CONCEPT_STOCKS.get("石英元件", []),
+        key_prefix="concept_quartz",
+    )
+
+elif page_mode == "液冷散熱":
+    render_rank_page(
+        title="液冷散熱",
+        stock_list=CONCEPT_STOCKS.get("液冷散熱", []),
+        key_prefix="concept_liquid",
+    )
+
+elif page_mode == "Starlink／低軌衛星":
+    render_rank_page(
+        title="Starlink／低軌衛星",
+        stock_list=CONCEPT_STOCKS.get("Starlink／低軌衛星", []),
+        key_prefix="concept_starlink",
+    )
+
+elif page_mode == "光通訊/矽光子":
+    render_rank_page(
+        title="光通訊/矽光子",
+        stock_list=CONCEPT_STOCKS.get("光通訊/矽光子", []),
+        key_prefix="concept_optical",
     )
 
 else:
@@ -1039,7 +1394,8 @@ with st.expander("使用提醒"):
         """
 - **市值排行前五**：2330、2308、2454、2317、3711。
 - **股價排行前五**：5274、6515、7796、6223、6669。
-- **自選股監測**：保留原本的 2330 固定監控與自訂股票查詢。
+- **AI 測試四大天王 / 石英元件 / 液冷散熱 / Starlink／低軌衛星**：概念股監控清單，中文名稱旁的 i 可查看個股註解。
+- **自選股監測**：輸入股票代碼查詢個股估值。
 - **TTM EPS 模式**：目前 PE = 目前股價 ÷ TTM EPS。
 - **Forward EPS 模式**：預估股價 = 目前 PE × Forward EPS。
 - **歷史 PE**：優先用歷史季度 EPS 建立 TTM EPS，再計算每日 PE。
