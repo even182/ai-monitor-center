@@ -1037,6 +1037,19 @@ def draw_bond_curve(bond_data):
         showlegend=False
     ))
 
+    # 美國十年期公債殖利率常被視為全球資產定價之錨。
+    # 4.3%~4.5% 為股市壓力警戒區；>5% 為嚴重警戒；<1.5% 通常代表經濟極度疲弱或危機。
+    fig.add_hline(
+        y=4.5,
+        line_color="red",
+        line_width=2,
+        line_dash="dash",
+        annotation_text="4.5% 股市壓力警戒線",
+        annotation_position="top left",
+        annotation_font_color="red",
+        annotation_bgcolor="rgba(255,255,255,0.75)"
+    )
+
     close_min = hist["Close"].min()
     close_max = hist["Close"].max()
     padding = (close_max - close_min) * 0.25
@@ -1046,6 +1059,9 @@ def draw_bond_curve(bond_data):
 
     y_min = close_min - padding
     y_max = close_max + padding
+
+    y_min = min(y_min, 4.2)
+    y_max = max(y_max, 4.7)
 
     fig.update_layout(
         height=250,
@@ -1140,6 +1156,71 @@ def draw_currency_chart(df, title, positive=True):
         #    annotation_position="bottom right",
         #    annotation_font_color="green"
         #)
+
+    # =========================
+    # USD/JPY 警戒線
+    # =========================
+
+    if "USD/JPY" in title:
+
+        fig.add_hline(
+            y=155,
+            line_color="orange",
+            line_width=2,
+            line_dash="dash",
+
+            annotation_text="155 警戒線",
+            annotation_position="top left",
+
+            annotation_font_color="orange",
+            annotation_bgcolor="rgba(255,255,255,0.75)"
+        )
+
+        fig.add_hline(
+            y=160,
+            line_color="red",
+            line_width=2,
+            line_dash="dash",
+
+            annotation_text="160 危機線",
+            annotation_position="top left",
+
+            annotation_font_color="red",
+            annotation_bgcolor="rgba(255,255,255,0.75)"
+        )
+
+    # =========================
+    # USD/TWD 警戒線
+    # =========================
+
+    if "USD/TWD" in title:
+
+        fig.add_hline(
+            y=32,
+            line_color="red",
+            line_width=2,
+            line_dash="dash",
+
+            annotation_text="32 壓力線",
+            annotation_position="top left",
+
+            annotation_font_color="red",
+            annotation_bgcolor="rgba(255,255,255,0.75)"
+        )
+
+        fig.add_hline(
+            y=29.2,
+            line_color="green",
+            line_width=2,
+            line_dash="dash",
+
+            annotation_text="29.2 強勢台幣",
+            annotation_position="bottom left",
+
+            annotation_font_color="green",
+            annotation_bgcolor="rgba(255,255,255,0.75)"
+        )
+
 
     # =========================
     # 原油 90 美元警戒線
@@ -1964,7 +2045,14 @@ with left:
 
     with st.container(border=True):
 
-        st.subheader("🏛 美國十年期公債殖利率")
+        st.markdown(
+            section_title_html(
+                "🏛 美國十年期公債殖利率",
+                "十年期美債殖利率可視為全球資產定價之錨。4.3%~4.5% 是股市估值壓力區；突破 5% 屬嚴重警戒，可能壓抑科技股與企業融資；低於 1.5% 多出現在衰退、寬鬆或危機時期。",
+                font_size=16
+            ),
+            unsafe_allow_html=True
+        )
 
         ten_year_data = get_bond_history("^TNX", period="6mo")
 
