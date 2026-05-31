@@ -380,8 +380,127 @@ GLOBAL_INDEX_PERIOD_OPTIONS = {
 # Data Functions
 # =========================
 
+
+def get_yahoo_chart_data(symbol, chart_period="1d"):
+
+    encoded_symbol = urllib.parse.quote(symbol, safe="")
+
+    if chart_period == "1d":
+        yahoo_range = "1d"
+        yahoo_interval = "5m"
+    else:
+        yahoo_range = chart_period
+        yahoo_interval = "1d"
+
+    url = (
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{encoded_symbol}"
+        f"?range={yahoo_range}&interval={yahoo_interval}&includePrePost=false"
+    )
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0",
+                "Accept": "application/json,text/plain,*/*",
+            }
+        )
+
+        with urllib.request.urlopen(request, timeout=12) as response:
+            raw = response.read().decode("utf-8", errors="ignore")
+
+        data = json.loads(raw)
+        result = data["chart"]["result"][0]
+
+        meta = result.get("meta", {})
+        timestamps = result.get("timestamp", [])
+        quote = result.get("indicators", {}).get("quote", [{}])[0]
+
+        close_values = quote.get("close", [])
+        open_values = quote.get("open", [])
+        high_values = quote.get("high", [])
+        low_values = quote.get("low", [])
+
+        rows = []
+
+        for idx, timestamp in enumerate(timestamps):
+
+            close_value = (
+                close_values[idx]
+                if idx < len(close_values)
+                else None
+            )
+
+            if close_value is None:
+                continue
+
+            rows.append({
+                "Datetime": datetime.fromtimestamp(timestamp),
+                "Open": (
+                    open_values[idx]
+                    if idx < len(open_values)
+                    and open_values[idx] is not None
+                    else close_value
+                ),
+                "High": (
+                    high_values[idx]
+                    if idx < len(high_values)
+                    and high_values[idx] is not None
+                    else close_value
+                ),
+                "Low": (
+                    low_values[idx]
+                    if idx < len(low_values)
+                    and low_values[idx] is not None
+                    else close_value
+                ),
+                "Close": close_value,
+            })
+
+        if not rows:
+            return None
+
+        hist = pd.DataFrame(rows)
+
+        price = safe_float(meta.get("regularMarketPrice"))
+        previous = safe_float(meta.get("chartPreviousClose"))
+
+        if price is None:
+            price = float(hist["Close"].iloc[-1])
+
+        if previous is None:
+            previous = safe_float(meta.get("previousClose"))
+
+        if previous is None:
+            previous = price
+
+        change = price - previous
+        change_pct = change / previous * 100 if previous else 0
+
+        return {
+            "price": float(price),
+            "previous": float(previous),
+            "change": float(change),
+            "change_pct": float(change_pct),
+            "hist": hist,
+            "last_time": hist.iloc[-1]["Datetime"]
+        }
+
+    except Exception:
+        return None
+
+
 @st.cache_data(ttl=3600)
 def get_market_data(symbol, chart_period="1d"):
+
+    # 台灣加權 ^TWII 在 yfinance daily close 有時會抓到前一日或延遲資料。
+    # 這裡優先用 Yahoo chart API 的 regularMarketPrice / chartPreviousClose，
+    # 才能與 Yahoo 即時頁面一致，避免把實際下跌誤判成上漲。
+    if symbol == "^TWII":
+        yahoo_data = get_yahoo_chart_data(symbol, chart_period)
+
+        if yahoo_data is not None:
+            return yahoo_data
 
     ticker = yf.Ticker(symbol)
 
