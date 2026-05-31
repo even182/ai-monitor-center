@@ -216,6 +216,26 @@ TW_STOCK_NAMES = {
     "3665": "貿聯-KY",
     "2474": "可成",
     "4958": "臻鼎-KY",
+
+    # 上櫃常用股
+    "3105": "穩懋",
+    "3324": "雙鴻",
+    "1815": "富喬",
+    "3491": "昇達科",
+    "6510": "精測",
+    "6223": "旺矽",
+    "6683": "雍智",
+    "8086": "宏捷科",
+    "4979": "華星光",
+    "3081": "聯亞",
+    "3363": "上詮",
+    "3163": "波若威",
+    "5340": "建榮",
+    "5475": "德宏",
+    "3234": "光環",
+    "3221": "台嘉碩",
+    "8289": "泰藝",
+    "6174": "安碁",
 }
 
 
@@ -319,19 +339,37 @@ def load_stock_name_map() -> Dict[str, str]:
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_tw_stock_name(stock_code: str) -> str:
     """
-    嘗試從台股公開資料抓中文股名。
-    若失敗則回傳空字串，讓畫面使用 Yahoo 英文名。
+    嘗試取得台股中文股名。
+    優先順序：
+    1. 內建常用股票名稱
+    2. data/stock_name.xlsx
+    3. TWSE / TPEX 公開 API 備援
+
+    特別處理 Yahoo 對上櫃股可能回傳的 3105O / 31050 格式。
     """
     code = normalize_stock_code_for_lookup(stock_code)
 
+    candidate_codes = [code]
+
+    if code.endswith("O"):
+        candidate_codes.append(code[:-1])
+
+    if code.isdigit() and len(code) == 5 and code.endswith("0"):
+        candidate_codes.append(code[:-1])
+
+    # 去重
+    candidate_codes = list(dict.fromkeys(candidate_codes))
+
     # 1. 先查內建常用股票名稱
-    if code in TW_STOCK_NAMES:
-        return TW_STOCK_NAMES[code]
+    for candidate_code in candidate_codes:
+        if candidate_code in TW_STOCK_NAMES:
+            return TW_STOCK_NAMES[candidate_code]
 
     # 2. 再查 data/stock_name.xlsx
     stock_name_map = load_stock_name_map()
-    if code in stock_name_map:
-        return stock_name_map[code]
+    for candidate_code in candidate_codes:
+        if candidate_code in stock_name_map:
+            return stock_name_map[candidate_code]
 
     # 3. 最後才嘗試線上公開資料
     urls = [
@@ -363,17 +401,15 @@ def fetch_tw_stock_name(stock_code: str) -> str:
 
                 values = {str(k): str(v).strip() for k, v in row.items()}
 
-                # 找代碼欄位
                 matched = False
-                for key, value in values.items():
-                    if value == code:
+                for value in values.values():
+                    if value in candidate_codes:
                         matched = True
                         break
 
                 if not matched:
                     continue
 
-                # 優先找常見名稱欄位
                 for name_key in [
                     "Name",
                     "CompanyName",
@@ -384,16 +420,15 @@ def fetch_tw_stock_name(stock_code: str) -> str:
                     "公司名稱",
                     "有價證券名稱",
                 ]:
-                    if name_key in values and values[name_key] and values[name_key] != code:
+                    if name_key in values and values[name_key] and values[name_key] not in candidate_codes:
                         return values[name_key]
 
-                # 模糊找名稱欄位
                 for key, value in values.items():
                     key_lower = key.lower()
                     if (
                         ("name" in key_lower or "名稱" in key or "公司" in key)
                         and value
-                        and value != code
+                        and value not in candidate_codes
                     ):
                         return value
 
@@ -410,6 +445,15 @@ def normalize_tw_symbol(symbol: str) -> str:
     if "." in symbol:
         return symbol
     return f"{symbol}.TW"
+
+
+def display_stock_code(symbol: str) -> str:
+    """
+    顯示用股票代號。
+    只從使用者輸入或 yfinance symbol 取代號，不使用 Yahoo 英文名稱。
+    避免上櫃股票被顯示成 31050 這類格式。
+    """
+    return normalize_stock_code_for_lookup(symbol)
 
 
 def resolve_tw_symbol(symbol: str) -> str:
@@ -440,6 +484,51 @@ def resolve_tw_symbol(symbol: str) -> str:
         return two_symbol
 
     return tw_symbol
+
+
+def get_clean_stock_code(symbol: str) -> str:
+    """
+    從 symbol 或 Yahoo 顯示字串取得乾淨台股四碼代號。
+    例如：
+    3105.TWO -> 3105
+    2317.TW  -> 2317
+    3105O    -> 3105
+    31050    -> 3105
+    """
+    code = normalize_stock_code_for_lookup(symbol)
+    code = code.replace("O", "0") if code.endswith("O") else code
+
+    if code.isdigit() and len(code) == 5 and code.endswith("0"):
+        code = code[:-1]
+
+    return code
+
+
+def clean_yahoo_name(name: str, clean_code: str = "") -> str:
+    """
+    清除 Yahoo Finance 對上櫃股回傳的錯誤前綴。
+    例如：
+    3105O | WIN Semiconductors Corp. -> WIN Semiconductors Corp.
+    31050 | WIN Semiconductors Corp. -> WIN Semiconductors Corp.
+    """
+    name = str(name or "").strip()
+
+    if "|" in name:
+        name = name.split("|")[-1].strip()
+
+    if clean_code:
+        wrong_prefixes = [
+            f"{clean_code}O",
+            f"{clean_code}0",
+            clean_code,
+        ]
+
+        for prefix in wrong_prefixes:
+            if name.startswith(prefix):
+                name = name.replace(prefix, "", 1).strip(" |")
+                break
+
+    return name
 
 
 def safe_float(value, default: Optional[float] = None) -> Optional[float]:
@@ -600,6 +689,10 @@ def fetch_stock_info(symbol: str) -> Dict:
             info = {}
 
         result["name"] = info.get("longName") or info.get("shortName") or symbol
+        result["name"] = clean_yahoo_name(result["name"], get_clean_stock_code(symbol))
+
+        if isinstance(result["name"], str) and "|" in result["name"]:
+            result["name"] = result["name"].split("|")[-1].strip()
         result["trailing_eps"] = safe_float(info.get("trailingEps"))
         result["forward_eps"] = safe_float(info.get("forwardEps"))
         result["forward_pe"] = safe_float(info.get("forwardPE"))
@@ -632,16 +725,20 @@ def fetch_stock_info(symbol: str) -> Dict:
         result["eps_quarter"] = eps_quarter
 
         if hist_price is not None and not hist_price.empty:
-            hist_df, method = build_daily_historical_pe(hist_price, eps_quarter, ttm_eps)
-            result["hist_3y"] = hist_df
-            result["pe_method"] = method
+            try:
+                hist_df, method = build_daily_historical_pe(hist_price, eps_quarter, ttm_eps)
+                result["hist_3y"] = hist_df
+                result["pe_method"] = method
 
-            pe_series = hist_df["PE"].replace([np.inf, -np.inf], np.nan).dropna()
+                pe_series = hist_df["PE"].replace([np.inf, -np.inf], np.nan).dropna()
 
-            if len(pe_series) >= 120:
-                result["hist_pe_low"] = round(float(pe_series.quantile(0.20)), 2)
-                result["hist_pe_mid"] = round(float(pe_series.mean()), 2)
-                result["hist_pe_high"] = round(float(pe_series.quantile(0.80)), 2)
+                if len(pe_series) >= 120:
+                    result["hist_pe_low"] = round(float(pe_series.quantile(0.20)), 2)
+                    result["hist_pe_mid"] = round(float(pe_series.mean()), 2)
+                    result["hist_pe_high"] = round(float(pe_series.quantile(0.80)), 2)
+            except Exception as pe_error:
+                result["hist_3y"] = pd.DataFrame()
+                result["pe_method"] = f"歷史 PE 暫無法計算：{pe_error}"
 
         if result["current_price"] is None:
             result["error"] = "無法抓取目前股價，請確認股票代號是否正確。"
@@ -895,13 +992,14 @@ def render_stock_block(block_title: str, symbol: str, key_prefix: str):
     left, right = st.columns([1.05, 1.15], gap="large")
 
     with left:
-        display_symbol = symbol.replace(".TW", "").replace(".TWO", "")
+        display_symbol = get_clean_stock_code(symbol)
         tw_name = fetch_tw_stock_name(display_symbol)
+        yahoo_name = clean_yahoo_name(stock["name"], display_symbol)
 
         if tw_name:
-            title_text = f"{display_symbol}｜{tw_name}｜{stock['name']}"
+            title_text = f"{display_symbol}｜{tw_name}｜{yahoo_name}"
         else:
-            title_text = f"{display_symbol}｜{stock['name']}"
+            title_text = f"{display_symbol}｜{yahoo_name}"
 
         st.markdown(
             f"<div class='stock-title'>{title_text}</div>",
