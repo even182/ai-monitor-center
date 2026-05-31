@@ -412,6 +412,36 @@ def normalize_tw_symbol(symbol: str) -> str:
     return f"{symbol}.TW"
 
 
+def resolve_tw_symbol(symbol: str) -> str:
+    """
+    自選股輸入純股號時：
+    1. 先試上市 .TW
+    2. 若抓不到股價，再試上櫃 .TWO
+    3. 若仍失敗，保留 .TW 並讓畫面顯示錯誤
+    """
+    raw = str(symbol).strip().upper()
+
+    if not raw:
+        return ""
+
+    if "." in raw:
+        return raw
+
+    tw_symbol = f"{raw}.TW"
+    tw_stock = fetch_stock_info(tw_symbol)
+
+    if tw_stock.get("current_price") is not None:
+        return tw_symbol
+
+    two_symbol = f"{raw}.TWO"
+    two_stock = fetch_stock_info(two_symbol)
+
+    if two_stock.get("current_price") is not None:
+        return two_symbol
+
+    return tw_symbol
+
+
 def safe_float(value, default: Optional[float] = None) -> Optional[float]:
     try:
         if value is None or pd.isna(value):
@@ -1496,9 +1526,11 @@ else:
         )
 
     if custom_symbol:
+        resolved_symbol = resolve_tw_symbol(custom_symbol)
+
         render_stock_block(
-            block_title=f"查詢結果：{normalize_tw_symbol(custom_symbol)}",
-            symbol=custom_symbol,
+            block_title=f"查詢結果：{resolved_symbol}",
+            symbol=resolved_symbol,
             key_prefix="custom",
         )
 
